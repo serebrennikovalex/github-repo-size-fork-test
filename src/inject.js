@@ -3,10 +3,14 @@
 const API = 'https://api.github.com/repos/'
 const LI_TAG_ID = 'github-repo-size'
 const GITHUB_TOKEN_KEY = 'x-github-token'
+const MEASURES_SELECT_TAG_ID = 'github-repo-select'
 
 const storage = chrome.storage.sync || chrome.storage.local
 
 let githubToken
+
+const MEASURES = ['AUTO', 'B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB']
+let measureSelected = 'AUTO'
 
 const getRepoObject = () => {
   // find file button
@@ -44,13 +48,22 @@ const getHumanReadableSizeObject = (bytes) => {
     }
   }
 
+  let measure
+  let i = 0
+
   const K = 1024
-  const MEASURE = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB']
-  const i = Math.floor(Math.log(bytes) / Math.log(K))
+
+  if (measureSelected === 'AUTO') {
+    i = Math.floor(Math.log(bytes) / Math.log(K))
+    measure = MEASURES[i + 1]
+  } else {
+    i = MEASURES.indexOf(measureSelected) - 1
+    measure = measureSelected
+  }
 
   return {
     size: parseFloat((bytes / Math.pow(K, i)).toFixed(2)),
-    measure: MEASURE[i]
+    measure
   }
 }
 
@@ -155,7 +168,7 @@ const checkForRepoPage = async () => {
     const t = sizeObj[getFileName(item.text)]
 
     const td = document.createElement('td')
-    td.className = 'age'
+    td.className = 'age github-repo-size-file'
 
     let label
 
@@ -226,6 +239,82 @@ const loadFolderSizes = async () => {
   }
 }
 
+const getSelectMeasureHTML = () => {
+  const options = MEASURES.map(measure => {
+    return `<option value="${measure}">${measure}</option>`
+  }).join('')
+
+  return `<select id="${MEASURES_SELECT_TAG_ID}">${options}</select>`
+}
+
+const addMeasuresSelect = async () => {
+  const repoObj = getRepoObject()
+  if (!repoObj) return
+
+  const divCT = document.querySelector('div.commit-tease')
+  const selectElem = document.getElementById(MEASURES_SELECT_TAG_ID)
+
+  if (divCT && !selectElem) {
+    getAPIData(repoObj.repo).then(summary => {
+      if (summary && summary.size) {
+        divCT.insertAdjacentHTML('beforeend', getSelectMeasureHTML())
+
+        const newSelectElem = document.getElementById(MEASURES_SELECT_TAG_ID)
+
+        newSelectElem.style.cssText = `cursor: pointer; margin-left: 10px;`
+        newSelectElem.onchange = changeMeasureSize
+      }
+    })
+  }
+}
+
+const changeMeasureSize = () => {
+  measureSelected = document.getElementById(MEASURES_SELECT_TAG_ID).value
+  updateTypeSize()
+}
+
+const updateTypeSize = async () => {
+  const repoObj = getRepoObject()
+  const tdElems = document.querySelector('span.github-repo-size-td')
+
+  if (!repoObj || !tdElems) return
+
+  const tree = await getAPIData(`${repoObj.repo}/contents/${repoObj.currentPath}?ref=${repoObj.ref}`)
+  const sizeObj = { '..': '..' }
+
+  for (let item of tree) {
+    sizeObj[item.name] = item.type !== 'dir' ? item.size : 'dir'
+  }
+
+  let list = document.querySelectorAll('table tbody tr.js-navigation-item')
+  let items = document.querySelectorAll('table tbody tr.js-navigation-item td:nth-child(2) a')
+
+  if (!list) {
+    await new Promise((resolve, reject) => {
+      setTimeout(function () {
+        list = document.querySelectorAll('table tbody tr.js-navigation-item')
+        items = document.querySelectorAll('table tbody tr.js-navigation-item td:nth-child(2) a')
+      }, 1000)
+    })
+  }
+
+  let i = 0
+
+  for (let item of items) {
+    const parent = list[i]
+    let label
+
+    const t = sizeObj[getFileName(item.text)]
+    const td = parent.querySelector('td.github-repo-size-file')
+
+    if (t !== 'dir' && t !== '..') {
+      label = getHumanReadableSize(t)
+      td.innerHTML = `<span class="css-truncate css-truncate-target github-repo-size-td">${label}</span>`
+    }
+    i++
+  }
+}
+
 storage.get(GITHUB_TOKEN_KEY, function (data) {
   githubToken = data[GITHUB_TOKEN_KEY]
 
@@ -236,6 +325,8 @@ storage.get(GITHUB_TOKEN_KEY, function (data) {
   })
 
   document.addEventListener('pjax:end', checkForRepoPage, false)
+  document.addEventListener('pjax:end', addMeasuresSelect, false)
 
   checkForRepoPage()
+  addMeasuresSelect()
 })
