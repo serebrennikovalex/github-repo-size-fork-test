@@ -255,16 +255,12 @@ const addMeasuresSelect = async () => {
   const selectElem = document.getElementById(MEASURES_SELECT_TAG_ID)
 
   if (divCT && !selectElem) {
-    getAPIData(repoObj.repo).then(summary => {
-      if (summary && summary.size) {
-        divCT.insertAdjacentHTML('beforeend', getSelectMeasureHTML())
+    divCT.insertAdjacentHTML('beforeend', getSelectMeasureHTML())
 
-        const newSelectElem = document.getElementById(MEASURES_SELECT_TAG_ID)
+    const newSelectElem = document.getElementById(MEASURES_SELECT_TAG_ID)
 
-        newSelectElem.style.cssText = `cursor: pointer; margin-left: 10px;`
-        newSelectElem.onchange = changeMeasureSize
-      }
-    })
+    newSelectElem.style.cssText = `cursor: pointer; margin-left: 10px;`
+    newSelectElem.onchange = changeMeasureSize
   }
 }
 
